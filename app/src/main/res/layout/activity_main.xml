@@ -11,25 +11,6 @@
         android:hint="No device selected"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/scanButton"
-        android:layout_margin="16dp" />
-
-    <Button
-        android:id="@+id/scanButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Scan"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/scanResultView"
-        android:layout_width="0dp"
-        android:layout_height="200dp"
-        app:layout_constraintTop_toBottomOf="@id/scanButton"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_margin="16dp" />
 
@@ -38,7 +19,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Connect"
-        app:layout_constraintTop_toBottomOf="@id/scanResultView"
+        app:layout_constraintTop_toBottomOf="@id/selectedDeviceText"
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginStart="16dp"
         android:layout_marginTop="8dp" />
@@ -48,41 +29,9 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Disconnect"
-        app:layout_constraintTop_toBottomOf="@id/scanResultView"
+        app:layout_constraintTop_toBottomOf="@id/selectedDeviceText"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp" />
-
-    <SeekBar
-        android:id="@+id/leftSeek"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="200"
-        android:progress="100"
-        app:layout_constraintTop_toBottomOf="@id/connectButton"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_margin="16dp" />
-
-    <SeekBar
-        android:id="@+id/rightSeek"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:max="200"
-        android:progress="100"
-        app:layout_constraintTop_toBottomOf="@id/leftSeek"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_margin="16dp" />
-
-    <CheckBox
-        android:id="@+id/armCheck"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Arm (RC switch still required)"
-        app:layout_constraintTop_toBottomOf="@id/rightSeek"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginStart="16dp"
         android:layout_marginTop="8dp" />
 
     <TextView
@@ -90,7 +39,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Disconnected"
-        app:layout_constraintTop_toBottomOf="@id/armCheck"
+        app:layout_constraintTop_toBottomOf="@id/connectButton"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_margin="16dp" />

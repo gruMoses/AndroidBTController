@@ -15,12 +15,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelUuid;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
@@ -29,12 +31,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    private static final int REQ_BT = 1001;
+    private static final String DEBUG_TAG = "BT_DEBUG";
+    private static final int REQ_BT_PERMISSIONS = 1001;
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String DEVICE_ADDRESS = "88:A2:9E:03:1A:07";
 
@@ -55,7 +60,6 @@ public class MainActivity extends AppCompatActivity {
 
     private ActivityResultLauncher<Intent> enableBtLauncher;
 
-    @SuppressLint("MissingPermission")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -77,28 +81,71 @@ public class MainActivity extends AppCompatActivity {
                 result -> {
                     if (result.getResultCode() != Activity.RESULT_OK) {
                         status("Bluetooth not enabled");
+                    } else {
+                        status("Bluetooth enabled, ready to connect");
                     }
                 });
 
+        if (ensureBtPermissions()) {
+            initializeBluetoothDevice();
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void initializeBluetoothDevice() {
         if (adapter != null) {
-            selectedDevice = adapter.getRemoteDevice(DEVICE_ADDRESS);
-            selectedDeviceText.setText(String.format(Locale.getDefault(), "%s [%s]", selectedDevice.getName(), selectedDevice.getAddress()));
+            try {
+                selectedDevice = adapter.getRemoteDevice(DEVICE_ADDRESS);
+                String deviceName = selectedDevice.getName();
+                if (deviceName == null) {
+                    deviceName = "Unknown Device";
+                }
+                selectedDeviceText.setText(String.format(Locale.getDefault(), "%s [%s]", deviceName, selectedDevice.getAddress()));
+                status("Device selected. Ready to connect.");
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to get remote device", e);
+                status("Failed to get remote device");
+            }
         }
     }
 
     private boolean ensureBtPermissions() {
         if (Build.VERSION.SDK_INT >= 31) {
+            List<String> permissionsToRequest = new ArrayList<>();
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQ_BT);
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
+            }
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN);
+            }
+            if (!permissionsToRequest.isEmpty()) {
+                ActivityCompat.requestPermissions(this, permissionsToRequest.toArray(new String[0]), REQ_BT_PERMISSIONS);
                 return false;
             }
         }
         return true;
     }
 
-    @SuppressLint("MissingPermission")
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_BT_PERMISSIONS) {
+            boolean allGranted = true;
+            for (int grantResult : grantResults) {
+                if (grantResult != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            if (allGranted) {
+                initializeBluetoothDevice();
+            } else {
+                status("Bluetooth permissions not granted");
+            }
+        }
+    }
+
     private void connect() {
-        if (!ensureBtPermissions()) return;
         if (adapter == null) {
             status("Bluetooth not available");
             return;
@@ -109,43 +156,61 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (selectedDevice == null) {
-            status("Device not found");
+            status("Device not found or permissions denied");
+            if (ensureBtPermissions()) {
+                initializeBluetoothDevice();
+            }
             return;
         }
-        // Start the connection and reader thread
+        if (readerThread != null && readerThread.isAlive()) {
+            status("Connection attempt already in progress");
+            return;
+        }
         readerThread = new Thread(this::connectionLoop);
         readerThread.start();
     }
 
-    @SuppressLint("MissingPermission")
+    @SuppressLint({"MissingPermission", "HardwareIds"})
     private void connectionLoop() {
+        BluetoothSocket tmpSocket = null;
         try {
-            status("Connecting...");
-            BluetoothSocket tmp = selectedDevice.createRfcommSocketToServiceRecord(SPP_UUID);
-            tmp.connect();
-            socket = tmp;
+            status("Connecting (Debug Mode)...");
+
+            Log.d(DEBUG_TAG, "Cancelling discovery...");
+            if (adapter.isDiscovering()) {
+                adapter.cancelDiscovery();
+            }
+            Log.d(DEBUG_TAG, "Discovery cancelled.");
+
+            Log.d(DEBUG_TAG, "Attempting connection with standard SPP UUID: " + SPP_UUID.toString());
+            status("Trying standard SPP connection...");
+
+            tmpSocket = selectedDevice.createInsecureRfcommSocketToServiceRecord(SPP_UUID);
+
+            Log.d(DEBUG_TAG, "Socket created. Calling connect()...");
+            tmpSocket.connect();
+            Log.d(DEBUG_TAG, "connect() returned successfully.");
+
+            socket = tmpSocket;
             out = socket.getOutputStream();
             InputStream in = socket.getInputStream();
             BufferedReader reader = new BufferedReader(new InputStreamReader(in));
 
-            // --- V2 Handshake ---
             String helloLine = reader.readLine();
             Log.d(TAG, "Received: " + helloLine);
             WalleBtProtocol.ServerHello hello = WalleBtProtocol.INSTANCE.parseServerHello(helloLine);
 
             if (hello != null && hello.getVersion() == 2) {
                 sessionNonceHex = hello.getSessionNonceHex();
-                sequenceNumber = 1L; // Reset sequence number on new session
+                sequenceNumber = 1L;
                 status("Connected (V2)");
 
-                // Launch ControlActivity after successful handshake
                 Intent intent = new Intent(MainActivity.this, ControlActivity.class);
                 startActivity(intent);
 
-                // --- ACK/NAK Loop ---
                 while (socket != null && socket.isConnected()) {
                     String line = reader.readLine();
-                    if (line == null) break; // End of stream
+                    if (line == null) break;
                     Log.d(TAG, "Received: " + line);
                     WalleBtProtocol.AckResult result = WalleBtProtocol.INSTANCE.parseAckOrNak(line);
                     if (result instanceof WalleBtProtocol.AckResult.Nak) {
@@ -153,25 +218,27 @@ public class MainActivity extends AppCompatActivity {
                         Log.w(TAG, "Received NAK with code: " + code);
                         if ("bad_nonce".equals(code) || "bad_hmac".equals(code)) {
                             status("Authentication error, disconnecting");
-                            closeQuietly();
-                            break; // Exit loop
+                            break;
                         }
                     }
                 }
 
             } else {
-                // --- V1 Fallback ---
                 status("Connected (V1)");
                 Intent intent = new Intent(MainActivity.this, ControlActivity.class);
                 startActivity(intent);
-                // For V1, we don't need to listen for ACKs, so the thread can exit.
+                while (socket != null && socket.isConnected()) {
+                    String line = reader.readLine();
+                    if (line == null) break;
+                    Log.d(TAG, "V1 Received: " + line);
+                }
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Connection failed", e);
+            Log.e(DEBUG_TAG, "Connection failed in simplified loop", e);
             status("Connection failed: " + e.getMessage());
         } finally {
-            Log.d(TAG, "Connection loop finished, closing socket.");
+            Log.d(DEBUG_TAG, "Connection loop finished.");
             closeQuietly();
         }
     }
@@ -205,11 +272,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static void cleanupStaticConnection() {
         try {
-            if (socket != null) {
-                socket.close();
-            }
+            if (out != null) out.close();
+            if (socket != null) socket.close();
         } catch (Exception ignored) {}
-        // Setting to null helps garbage collection and signals that the connection is gone
         out = null;
         socket = null;
         sessionNonceHex = null;

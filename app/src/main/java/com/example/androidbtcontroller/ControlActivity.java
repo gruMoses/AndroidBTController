@@ -3,6 +3,8 @@ package com.example.androidbtcontroller;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
@@ -21,6 +23,11 @@ public class ControlActivity extends AppCompatActivity {
 
     private static final float EXPO_FACTOR = 0.4f;
     private static final float DEAD_ZONE_RADIUS = 20f;
+
+    private final Handler streamingHandler = new Handler(Looper.getMainLooper());
+    private Runnable streamingRunnable;
+    private static final long STREAMING_INTERVAL_MS = 200;
+
 
     @SuppressLint({"ClickableViewAccessibility", "ServiceCast"})
     @Override
@@ -53,6 +60,35 @@ public class ControlActivity extends AppCompatActivity {
             }
             return true;
         });
+
+        streamingRunnable = new Runnable() {
+            @Override
+            public void run() {
+                calculateAndSendMotorSpeeds();
+                streamingHandler.postDelayed(this, STREAMING_INTERVAL_MS);
+            }
+        };
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        startStreaming();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopStreaming();
+    }
+
+    private void startStreaming() {
+        streamingHandler.removeCallbacks(streamingRunnable);
+        streamingHandler.post(streamingRunnable);
+    }
+
+    private void stopStreaming() {
+        streamingHandler.removeCallbacks(streamingRunnable);
     }
 
     private void handleJoystickMove(MotionEvent event) {
@@ -78,8 +114,6 @@ public class ControlActivity extends AppCompatActivity {
 
         binding.joystick.setX(x - binding.joystick.getWidth() / 2f);
         binding.joystick.setY(y - binding.joystick.getHeight() / 2f);
-
-        calculateAndSendMotorSpeeds();
     }
 
     private void resetJoystick() {
